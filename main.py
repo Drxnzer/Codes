@@ -34,14 +34,7 @@ def load_accounts():
     return accounts
 
 def check_purchased_codes(auth_token, email, password):
-    """
-    Check an Xbox account for any purchased codes and save the details to a file.
-    
-    Parameters:
-    auth_token (str): The access token for authenticating with the Microsoft APIs.
-    email (str): The email address of the Xbox account to check.
-    password (str): The password of the Xbox account to check.
-    """
+    print(f"Checking {email}")
     global valid_codes, invalid_codes
     headers = {
         'Authorization': f'Bearer {auth_token}',
@@ -59,7 +52,6 @@ def check_purchased_codes(auth_token, email, password):
         codes = []
         
         for order in orders.get('orderHistoryItems', []):
-            # Check if the order contains a code
             if 'productKey' in order:
                 code_info = {
                     'product_name': order.get('productTitle', 'Unknown'),
@@ -67,19 +59,27 @@ def check_purchased_codes(auth_token, email, password):
                 }
                 codes.append(code_info)
                 
-                # Save to codes.txt
+                # Save the code to the "codes.txt" file
                 with open('codes.txt', 'a', encoding='utf-8') as f:
                     f.write(f"Product: {code_info['product_name']}\n")
                     f.write(f"Code: {code_info['code']}\n")
                     f.write("-" * 50 + "\n")
-                valid_codes += 1
-        
-        return codes
-    
+                
+                # Display a message for valid codes
+                if order['productKey'] != 'invalid or redeemed':
+                    print(f"Found code: {code_info['code']} | valid")
+                    valid_codes += 1
+                else:
+                    print(f"Found code: {code_info['code']} | invalid")
+                    invalid_codes += 1
+
     except requests.exceptions.RequestException as e:
         invalid_codes += 1
         print(f"Error checking purchased codes for {email}: {str(e)}")
         return []
+
+    time.sleep(0.5)
+    return codes
 
 def authenticate(email, password):
     """
