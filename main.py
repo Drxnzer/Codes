@@ -2,6 +2,7 @@ import requests
 import os
 import time
 import threading
+import uuid
 
 # Global variables to track statistics
 checked = 0
@@ -23,110 +24,160 @@ def log_and_print(message):
     persistent_log.append(message)
     print(message)
 
-def get_auth_token(email, password):
+class XboxAuthentication:
+    def __init__(self, email=None, password=None):
+        self.email = email
+        self.password = password
+        self.access_token = None
+        self.xbox_token = None
+    
+    def authenticate_method_one(self):
+        """
+        Modern Microsoft Authentication Method
+        More secure and aligned with current protocols
+        """
+        try:
+            # Generate unique identifiers
+            client_id = "0000000048093EF3"  # Microsoft's Xbox client ID
+            scope = "service::user.auth.xboxlive.com::MBI_SSL"
+            
+            # Prepare authentication payload
+            payload = {
+                "client_id": client_id,
+                "grant_type": "password",
+                "username": self.email,
+                "password": self.password,
+                "scope": scope
+            }
+            
+            # Authentication URL
+            token_url = "https://login.live.com/oauth20_token.srf"
+            
+            # Send authentication request
+            token_response = requests.post(token_url, data=payload)
+            
+            if token_response.status_code == 200:
+                token_data = token_response.json()
+                self.access_token = token_data.get('access_token')
+                
+                # Exchange for Xbox token
+                return self.exchange_xbox_token()
+            else:
+                log_and_print(f"Authentication failed: {token_response.text}")
+                return None
+        
+        except Exception as e:
+            log_and_print(f"Authentication error: {e}")
+            return None
+    
+    def authenticate_method_two(self):
+        """
+        Alternative Authentication Method
+        Uses different request parameters
+        """
+        try:
+            auth_url = "https://login.live.com/oauth20_token.srf"
+            payload = {
+                "client_id": "0000000048093EF3",
+                "client_secret": "KBM-mYw-zCpbRCGv-rCB5wgzrjQqf5hG",
+                "grant_type": "password",
+                "username": self.email,
+                "password": self.password,
+                "scope": "service::user.auth.xboxlive.com::MBI_SSL"
+            }
+            
+            response = requests.post(auth_url, data=payload)
+            
+            if response.status_code == 200:
+                token_data = response.json()
+                self.access_token = token_data.get('access_token')
+                return self.exchange_xbox_token()
+            else:
+                log_and_print(f"Authentication failed: {response.text}")
+                return None
+        
+        except Exception as e:
+            log_and_print(f"Authentication error: {e}")
+            return None
+    
+    def exchange_xbox_token(self):
+        """
+        Xbox Token Exchange Mechanism
+        Converts Microsoft access token to Xbox Live token
+        """
+        try:
+            # Xbox authentication URLs
+            xbox_auth_url = "https://user.auth.xboxlive.com/user/authenticate"
+            xsts_url = "https://xsts.auth.xboxlive.com/xsts/authorize"
+            
+            # First, authenticate with Xbox Live
+            xbox_auth_payload = {
+                "Properties": {
+                    "AuthMethod": "RPS",
+                    "SiteName": "user.auth.xboxlive.com",
+                    "RpsTicket": f"d={self.access_token}"
+                },
+                "RelyingParty": "http://auth.xboxlive.com",
+                "TokenType": "JWT"
+            }
+
+            xbox_auth_response = requests.post(xbox_auth_url, json=xbox_auth_payload)
+            
+            if xbox_auth_response.status_code != 200:
+                log_and_print(f"Xbox authentication failed: {xbox_auth_response.text}")
+                return None
+            
+            xbox_auth_data = xbox_auth_response.json()
+            
+            # Authorize with XSTS
+            xsts_payload = {
+                "Properties": {
+                    "SandboxId": "RETAIL",
+                    "UserTokens": [xbox_auth_data['Token']]
+                },
+                "RelyingParty": "http://xboxlive.com",
+                "TokenType": "JWT"
+            }
+            
+            xsts_response = requests.post(xsts_url, json=xsts_payload)
+            
+            if xsts_response.status_code != 200:
+                log_and_print(f"XSTS authorization failed: {xsts_response.text}")
+                return None
+            
+            xsts_data = xsts_response.json()
+            
+            # Construct final authentication token
+            uhs = xsts_data['DisplayClaims']['xui'][0]['uhs']
+            xbox_token = f"XBL3.0 x={uhs};{xsts_data['Token']}"
+            
+            return xbox_token
+        
+        except Exception as e:
+            log_and_print(f"Token exchange error: {e}")
+            return None
+
+def authenticate(email, password):
     """
-    Authenticate and obtain an access token for Microsoft services.
+    Attempt to authenticate using multiple methods
     
     Args:
-        email (str): Microsoft account email
-        password (str): Microsoft account password
+        email (str): Account email
+        password (str): Account password
     
     Returns:
-        str: Authentication token for API requests
+        str: Authentication token or None if authentication fails
     """
-    # Microsoft Authentication URL
-    auth_url = "https://login.live.com/oauth20_token.srf"
+    auth = XboxAuthentication(email, password)
     
-    # Client details for Microsoft Authentication
-    client_id = "0000000048093EF3"  # Microsoft's default Xbox Live client ID
-    redirect_uri = "https://login.live.com/oauth20_desktop.srf"
-
-    # Payload for token request
-    payload = {
-        "client_id": client_id,
-        "redirect_uri": redirect_uri,
-        "client_secret": "KBM-mYw-zCpbRCGv-rCB5wgzrjQqf5hG",
-        "grant_type": "password",
-        "username": email,
-        "password": password,
-        "scope": "service::user.auth.xboxlive.com::MBI_SSL"
-    }
-
-    try:
-        # Send authentication request
-        response = requests.post(auth_url, data=payload)
-        response.raise_for_status()
-        
-        # Extract access token
-        access_token = response.json().get('access_token')
-        
-        # Exchange access token for Xbox token
-        xbox_auth_token = exchange_xbox_token(access_token)
-        
-        return xbox_auth_token
+    # Try first authentication method
+    token = auth.authenticate_method_one()
     
-    except requests.exceptions.RequestException as e:
-        log_and_print(f"Authentication error for {email}: {str(e)}")
-        return None
-
-def exchange_xbox_token(access_token):
-    """
-    Exchange Microsoft access token for Xbox Live token.
+    # If first method fails, try second method
+    if not token:
+        token = auth.authenticate_method_two()
     
-    Args:
-        access_token (str): Microsoft access token
-    
-    Returns:
-        str: Xbox Live authentication token
-    """
-    # Xbox Live authentication URLs
-    xbox_auth_url = "https://user.auth.xboxlive.com/user/authenticate"
-    xbox_authorize_url = "https://xsts.auth.xboxlive.com/xsts/authorize"
-
-    # First, authenticate with Xbox Live
-    xbox_auth_payload = {
-        "Properties": {
-            "AuthMethod": "RPS",
-            "SiteName": "user.auth.xboxlive.com",
-            "RpsTicket": f"d={access_token}"
-        },
-        "RelyingParty": "http://auth.xboxlive.com",
-        "TokenType": "JWT"
-    }
-
-    try:
-        # Get Xbox authentication token
-        xbox_auth_response = requests.post(xbox_auth_url, json=xbox_auth_payload)
-        xbox_auth_response.raise_for_status()
-        xbox_auth_data = xbox_auth_response.json()
-        
-        # Authorize with XSTS
-        xsts_payload = {
-            "Properties": {
-                "SandboxId": "RETAIL",
-                "UserTokens": [xbox_auth_data['Token']]
-            },
-            "RelyingParty": "http://xboxlive.com",
-            "TokenType": "JWT"
-        }
-        
-        xsts_response = requests.post(xbox_authorize_url, json=xsts_payload)
-        xsts_response.raise_for_status()
-        xsts_data = xsts_response.json()
-        
-        # Construct final authentication token
-        xbox_token = f"XBL3.0 x={xsts_data['DisplayClaims']['xui'][0]['uhs']};{xsts_data['Token']}"
-        
-        return xbox_token
-    
-    except requests.exceptions.RequestException as e:
-        log_and_print(f"Xbox token exchange error: {str(e)}")
-        return None
-
-# [Rest of the previous script remains the same - load_accounts, check_purchased_codes, etc.]
-# (Copy the entire previous script's remaining code here)
-
-# The main function and other components would remain exactly the same as in the previous artifact
+    return token
 
 def load_accounts():
     """
@@ -153,8 +204,21 @@ def load_accounts():
     return accounts
 
 def check_purchased_codes(auth_token, email, password):
+    """
+    Check purchased codes for a given account
+    
+    Args:
+        auth_token (str): Authentication token
+        email (str): Account email
+        password (str): Account password
+    
+    Returns:
+        list: List of purchased codes
+    """
     log_and_print(f"Checking {email}")
     global valid_codes, invalid_codes
+    
+    # Prepare headers for the request
     headers = {
         'Authorization': f'Bearer {auth_token}',
         'Content-Type': 'application/json',
@@ -207,32 +271,13 @@ def check_purchased_codes(auth_token, email, password):
     time.sleep(1)
     return codes
 
-def authenticate(email, password):
-    """
-    Authenticate with the Microsoft services to get an access token.
-    
-    Parameters:
-    email (str): The email address of the Xbox account to authenticate.
-    password (str): The password of the Xbox account to authenticate.
-    
-    Returns:
-    str: The access token for further API calls, or None if authentication fails.
-    """
-    try:
-        # Existing authentication code here...
-        auth_token = get_auth_token(email, password)
-        return auth_token
-    except Exception as e:
-        log_and_print(f"Error authenticating {email}: {str(e)}")
-        return None
-
 def update_ui():
     """
     Update the UI with the current statistics and persistent log.
     """
     global checked, valid_codes, invalid_codes, persistent_log
     while True:
-        os.system('clear')
+        os.system('clear')  # Use 'cls' for Windows
         print("================================")
         print("         Code Checker Tool")
         print("================================")
@@ -259,10 +304,19 @@ def main():
     
     # Check accounts and codes
     for email, password in accounts:
-        auth_token = authenticate(email, password)
-        if auth_token:
-            check_purchased_codes(auth_token, email, password)
-        checked += 1
+        try:
+            # Attempt to get authentication token
+            auth_token = authenticate(email, password)
+            
+            # If authentication successful, check purchased codes
+            if auth_token:
+                check_purchased_codes(auth_token, email, password)
+            
+            # Increment checked accounts
+            checked += 1
+        
+        except Exception as e:
+            log_and_print(f"Error processing account {email}: {e}")
     
     # Optional: Keep the main thread running to maintain UI
     while True:
