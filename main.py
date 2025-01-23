@@ -21,8 +21,12 @@ def load_accounts():
         with open('combos.txt', 'r', encoding='utf-8') as f:
             lines = f.readlines()
             for line in lines:
-                email, password = line.strip().split(':')
-                accounts.append((email, password))
+                line = line.strip()
+                if ':' in line:  # Ensure the line contains a separator
+                    email, password = line.split(':', 1)  # Split only once
+                    accounts.append((email, password))
+                else:
+                    print(f"Invalid line skipped: {line}")
         print(f"Loaded {len(accounts)} accounts from combos.txt.")
     except FileNotFoundError:
         print("Error: 'combos.txt' file not found.")
