@@ -32,73 +32,51 @@ class XboxAuthentication:
         self.xbox_token = None
     
     def authenticate_method_one(self):
-        """
-        Modern Microsoft Authentication Method
-        More secure and aligned with current protocols
-        """
-        try:
-            # Generate unique identifiers
-            client_id = "0000000048093EF3"  # Microsoft's Xbox client ID
-            scope = "service::user.auth.xboxlive.com::MBI_SSL"
-            
-            # Prepare authentication payload
-            payload = {
-                "client_id": client_id,
-                "grant_type": "password",
-                "username": self.email,
-                "password": self.password,
-                "scope": scope
-            }
-            
-            # Authentication URL
-            token_url = "https://login.live.com/oauth20_token.srf"
-            
-            # Send authentication request
-            token_response = requests.post(token_url, data=payload)
-            
-            if token_response.status_code == 200:
-                token_data = token_response.json()
-                self.access_token = token_data.get('access_token')
-                
-                # Exchange for Xbox token
-                return self.exchange_xbox_token()
-            else:
-                log_and_print(f"Authentication failed: {token_response.text}")
-                return None
-        
-        except Exception as e:
-            log_and_print(f"Authentication error: {e}")
+    try:
+        client_id = "0000000048093EF3"
+        scope = "service::user.auth.xboxlive.com::MBI_SSL"
+        payload = {
+            "client_id": client_id,
+            "grant_type": "password",
+            "username": self.email,
+            "password": self.password,
+            "scope": scope
+        }
+        token_url = "https://login.live.com/oauth20_token.srf"
+        token_response = requests.post(token_url, data=payload)
+        if token_response.status_code == 200:
+            token_data = token_response.json()
+            self.access_token = token_data.get('access_token')
+            return self.exchange_xbox_token()
+        else:
+            log_and_print(f"Authentication failed: {token_response.text}")
             return None
-    
-    def authenticate_method_two(self):
-        """
-        Alternative Authentication Method
-        Uses different request parameters
-        """
-        try:
-            auth_url = "https://login.live.com/oauth20_token.srf"
-            payload = {
-                "client_id": "0000000048093EF3",
-                "client_secret": "KBM-mYw-zCpbRCGv-rCB5wgzrjQqf5hG",
-                "grant_type": "password",
-                "username": self.email,
-                "password": self.password,
-                "scope": "service::user.auth.xboxlive.com::MBI_SSL"
-            }
-            
-            response = requests.post(auth_url, data=payload)
-            
-            if response.status_code == 200:
-                token_data = response.json()
-                self.access_token = token_data.get('access_token')
-                return self.exchange_xbox_token()
-            else:
-                log_and_print(f"Authentication failed: {response.text}")
-                return None
-        
-        except Exception as e:
-            log_and_print(f"Authentication error: {e}")
+    except Exception as e:
+        log_and_print(f"Authentication error: {e}")
+        return None
+
+def authenticate_method_two(self):
+    try:
+        auth_url = "https://login.live.com/oauth20_token.srf"
+        payload = {
+            "client_id": "0000000048093EF3",
+            "client_secret": "KBM-mYw-zCpbRCGv-rCB5wgzrjQqf5hG",
+            "grant_type": "password",
+            "username": self.email,
+            "password": self.password,
+            "scope": "service::user.auth.xboxlive.com::MBI_SSL"
+        }
+        response = requests.post(auth_url, data=payload)
+        if response.status_code == 200:
+            token_data = response.json()
+            self.access_token = token_data.get('access_token')
+            return self.exchange_xbox_token()
+        else:
+            log_and_print(f"Authentication failed: {response.text}")
             return None
+    except Exception as e:
+        log_and_print(f"Authentication error: {e}")
+        return None
     
     def exchange_xbox_token(self):
         """
